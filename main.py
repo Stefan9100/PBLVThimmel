@@ -21,7 +21,6 @@ def get_active_travel_data_indices(powerDataEntry, car_travelData):
             and (travelDataEntry["Ankunft-Tag"] < powerDataEntry["Tag"]
                  or (travelDataEntry["Ankunft-Tag"] == powerDataEntry["Tag"] and arrival_time < current_time))):
             indices.append(index)
-            #print(travelDataEntry["Fahrzeug"])
     return indices
 
 
