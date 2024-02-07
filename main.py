@@ -159,7 +159,7 @@ def adjust_charging_schedule_based_on_remaining_load(car_travelData, car_id, loa
 
         # neue späteste Ladezeit basierend auf verbleibende Ladung
         latest_charging_time_str = f"{row['Ladezeitpunkt_Tag']} {row['Ladezeitpunkt_Uhrzeit']}"
-        latest_charging_time = datetime.strptime(latest_charging_time_str, '%d %H:%M')
+        latest_charging_time = datetime.strptime(latest_charging_time_str, '%d %H:%M:%S')
         new_latest_charging_time = latest_charging_time + timedelta(minutes=intervals_needed * 5)
 
         # Update den DataFrame mit der neuen spätesten Ladezeit
