@@ -22,9 +22,3 @@ car_masterData = {'Modell': ['BMW i4', 'Tesla Model 3'],
 car_masterData = pd.DataFrame(car_masterData)
 pv_powerData = pd.DataFrame(pv_powerData)
 car_travelData = pd.DataFrame(car_travelData)
-
-# print Data test
-print(pv_powerData.to_string())
-
-
-
