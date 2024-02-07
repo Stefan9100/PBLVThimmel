@@ -132,6 +132,48 @@ def get_active_travel_data_indices(powerDataEntry, car_travelData):
     return indices
 
 
+
+
+
+# angenommen spätester Ladezeitpunkt gegeben
+# verschiebt die spätere Lade Uhrzeit, wenn davor bereits geladen wurde
+
+def adjust_charging_schedule_based_on_remaining_load(car_travelData, car_id, loaded_kwh):
+
+    car_travelData.sort_values(by=["Ankunft_Tag", "Ankunft_Uhrzeit"], inplace=True)
+    # Wie viele kWh in 5 Minuten geladen werden können
+    kwh_per_interval = (4 / 60) * 5
+
+    # spezifisches Auto
+    car_data = car_travelData[car_travelData['Fahrzeug'] == car_id]
+
+    for index, row in car_data.iterrows():
+        # verbleibende erforderliche Ladung
+        remaining_kwh = row['Notwendige_Ladung'] - loaded_kwh
+
+        # Sicherstellen, dass verbleibende Ladung nicht negativ
+        remaining_kwh = max(remaining_kwh, 0)
+
+        # benötigte Intervalle, für verbleibende benötigte Ladung
+        intervals_needed = remaining_kwh / kwh_per_interval
+
+        # neue späteste Ladezeit basierend auf verbleibende Ladung
+        latest_charging_time_str = f"{row['Ladezeitpunkt_Tag']} {row['Ladezeitpunkt_Uhrzeit']}"
+        latest_charging_time = datetime.strptime(latest_charging_time_str, '%d %H:%M')
+        new_latest_charging_time = latest_charging_time + timedelta(minutes=intervals_needed * 5)
+
+        # Update den DataFrame mit der neuen spätesten Ladezeit
+        car_travelData.at[index, 'Ladezeitpunkt_Uhrzeit'] = new_latest_charging_time.strftime('%H:%M')
+
+    return car_travelData
+
+
+# Test
+adjusted_car_travelData = adjust_charging_schedule_based_on_remaining_load(getChargePointsforAllVehicles(), 1, 10)
+print(adjusted_car_travelData[
+          ['Fahrzeug', 'Ankunft_Tag', 'Ankunft_Uhrzeit', 'Ladezeitpunkt_Tag', 'Ladezeitpunkt_Uhrzeit']])
+
+
 print(getChargePointsforAllVehicles().to_string())
 # Order travelData
 car_travelData.sort_values(by=["Ankunft_Tag", "Ankunft_Uhrzeit"], inplace=True)
