@@ -170,8 +170,8 @@ def adjust_charging_schedule_based_on_remaining_load(car_travelData, car_id, loa
 
 # Test
 adjusted_car_travelData = adjust_charging_schedule_based_on_remaining_load(getChargePointsforAllVehicles(), 1, 10)
-print(adjusted_car_travelData[
-          ['Fahrzeug', 'Ankunft_Tag', 'Ankunft_Uhrzeit', 'Ladezeitpunkt_Tag', 'Ladezeitpunkt_Uhrzeit']])
+#print(adjusted_car_travelData[
+         # ['Fahrzeug', 'Ankunft_Tag', 'Ankunft_Uhrzeit', 'Ladezeitpunkt_Tag', 'Ladezeitpunkt_Uhrzeit', 'Dauer']])
 
 
 print(getChargePointsforAllVehicles().to_string())
@@ -180,12 +180,59 @@ car_travelData.sort_values(by=["Ankunft_Tag", "Ankunft_Uhrzeit"], inplace=True)
 
 # print Data test
 # print(pv_powerData.to_string())
-# print(car_travelData.to_string())
+print(car_travelData.to_string())
 
 for index, powerDataEntry in pv_powerData.iterrows():
     active_travel_data_indices = get_active_travel_data_indices(powerDataEntry, getChargePointsforAllVehicles())
 
-    # if active_travel_data_indices:
-    #print(str(active_travel_data_indices) + " " + str(powerDataEntry["Tag"])+ " " + str(powerDataEntry["Uhrzeit"]))
+    if len(active_travel_data_indices) == 0:
+        continue
 
-# if powerDataEntry["Erzeugung in Watt (W)"] > 0 :
+    # Nötig um den Puffer zu berechnen
+    active_travel_data = car_travelData.loc[active_travel_data_indices]
+
+    # Wenn die PV Erzeugung über 4kwh ist
+    if powerDataEntry["Erzeugung in Watt (W)"] > 4000/60 * 5:
+        # Wenn nur ein Auto zuhause ist wird dieses geladen
+        if len(active_travel_data_indices) == 1:
+            # => Load Car von Jasmin active_travel_data_indices[0], 4000/60 * 5, adjusted_car_travelData
+            #print("Load Car: " + str(active_travel_data_indices[0]) + "; Tag: " + str(powerDataEntry["Tag"])+ "; Uhrzeit: " + str(powerDataEntry["Uhrzeit"]))
+            continue
+        # Wenn mehere Autos zu hause sind
+        else:
+            to_much_power = powerDataEntry["Erzeugung in Watt (W)"] - 4000/60 * 5
+            #print(to_much_power)
+            #Können beide Autos gleichzeitig mit PB strom geladen werden
+            if(to_much_power > 4000/60 * 5):
+                # => Load beide Autos mit PV Strom
+                #print("Ohne Prio")
+                continue
+            # Es kann nur ein Auto mit 4kwh Strom geladen werden
+            else:
+                #print("Priorisierung")
+
+
+                # If puffer bei einem von beiden 0
+                    # lade dieses mit 4kwh
+                    # lade das andere mit den to_much_power
+                # elif puffer bei beiden bei 0
+                    # Lade eines mit 4kwh PV Strom
+                    # Lade das andere mit 4kwh normalen Strom
+                # Else
+                    # Lade das wo der Puffer weniger ist mit 4kwh
+                    # Lade das andere mit to_much_power
+                continue
+    # PV-Strom ist in kleiner Menge verfügbar
+    elif powerDataEntry["Erzeugung in Watt (W)"] > 0:
+        #if puffer bei beiden 0
+            #beide an normalen Strom mit 4kwh hängen
+        #elif puffer bei einem 0
+            #lade das mit Puffer 0 mit 4kwh normalen strom
+            #Das andere bekommt den erzeugten PV-Strom
+        #else
+            # Lade das wo der Puffer weniger ist mit den erzeugten PV-Strom
+        continue
+    #Gibt es Autos wo puffer gleich 0
+    #elif ...
+        #Lade alle Autps wo Puffer gleich 0 mit 4kwh normalen Strom
+
