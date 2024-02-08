@@ -82,18 +82,6 @@ def getLastChargePointsForVehicle(vehicleNumber):
     for i in drive_schedule.index:
         chargePointsArray.append(getLatestChargePoint(drive_schedule.Abfahrt_Uhrzeit[i], drive_schedule.Abfahrt_Tag[i],
                                                       drive_schedule.Notwendige_Ladung[i], i))
-    # print(chargePointsArray)
-
-    # Create data to add to Dataframe
-
-    # print(final_df.to_string())
-    # Compares the range between latestCharging to start drive and start drive - end drive to see if the overlap
-    """for x in chargePointsArray:
-        charge_dummy_date = datetime(99, 12, x[0])
-        charge_datetime_obj = datetime.combine(charge_dummy_date, x[1])
-        chargeDriveArray_dateObj.append(charge_datetime_obj)
-        print(charge_datetime_obj)
-    """
     return chargePointsArray
 
 
@@ -110,6 +98,18 @@ def getChargePointsforAllVehicles():
     travel_df = pd.concat([car_travelData, chargePoint_df], axis=1)
 
     return travel_df
+
+
+# Funktion zum Berechnen der Dauer für jedes Fahrzeug
+def create_datetime_object(row):
+    year = 2023  # Set the year to the current year or any other year
+    abfahrt_tag = row['Abfahrt_Tag']
+    abfahrt_zeit = row['Abfahrt_Uhrzeit']
+    abfahrt_datetime = datetime.combine(datetime(year, 1, 1) + timedelta(days=abfahrt_tag - 1), datetime.strptime(abfahrt_zeit, "%H:%M:%S").time())
+    return abfahrt_datetime
+
+
+# Funktion zum Berechnen der Dauer für jedes Fahrzeug
 
 
 
@@ -132,14 +132,10 @@ def get_active_travel_data_indices(powerDataEntry, car_travelData):
     return indices
 
 
-
-
-
 # angenommen spätester Ladezeitpunkt gegeben
 # verschiebt die spätere Lade Uhrzeit, wenn davor bereits geladen wurde
 
 def adjust_charging_schedule_based_on_remaining_load(car_travelData, car_id, loaded_kwh):
-
     car_travelData.sort_values(by=["Ankunft_Tag", "Ankunft_Uhrzeit"], inplace=True)
     # Wie viele kWh in 5 Minuten geladen werden können
     kwh_per_interval = (4 / 60) * 5
@@ -170,11 +166,10 @@ def adjust_charging_schedule_based_on_remaining_load(car_travelData, car_id, loa
 
 # Test
 adjusted_car_travelData = adjust_charging_schedule_based_on_remaining_load(getChargePointsforAllVehicles(), 1, 10)
-print(adjusted_car_travelData[
-          ['Fahrzeug', 'Ankunft_Tag', 'Ankunft_Uhrzeit', 'Ladezeitpunkt_Tag', 'Ladezeitpunkt_Uhrzeit']])
+# print(adjusted_car_travelData[
+#          ['Fahrzeug', 'Ankunft_Tag', 'Ankunft_Uhrzeit', 'Ladezeitpunkt_Tag', 'Ladezeitpunkt_Uhrzeit']])
 
-
-print(getChargePointsforAllVehicles().to_string())
+# print(adjusted_car_travelData.to_string())
 # Order travelData
 car_travelData.sort_values(by=["Ankunft_Tag", "Ankunft_Uhrzeit"], inplace=True)
 
@@ -186,6 +181,8 @@ for index, powerDataEntry in pv_powerData.iterrows():
     active_travel_data_indices = get_active_travel_data_indices(powerDataEntry, getChargePointsforAllVehicles())
 
     # if active_travel_data_indices:
-    #print(str(active_travel_data_indices) + " " + str(powerDataEntry["Tag"])+ " " + str(powerDataEntry["Uhrzeit"]))
+    #    print(str(active_travel_data_indices) + " " + str(powerDataEntry["Tag"]) + " " + str(powerDataEntry["Uhrzeit"]))
 
 # if powerDataEntry["Erzeugung in Watt (W)"] > 0 :
+
+print(getChargePointsforAllVehicles().to_string())
