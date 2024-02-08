@@ -66,6 +66,24 @@ def adjust_duration(travel_dataframe):
     return travel_dataframe
 
 
+def get_active_travel_data_indices(powerDataEntry, car_travelData):
+    indices = []
+    for index, travelDataEntry in car_travelData.iterrows():
+        arrival_time = travelDataEntry["Ankunft"].time()
+        departure_time = travelDataEntry["Abfahrt"].time()
+        current_time = powerDataEntry["Uhrzeit"]
+
+        if (travelDataEntry["Ankunft"].day > powerDataEntry["Tag"] or
+                (travelDataEntry["Ankunft"].day == powerDataEntry["Tag"] and arrival_time > current_time)):
+            break
+        if ((travelDataEntry["Abfahrt"].day > powerDataEntry["Tag"]
+             or (travelDataEntry["Abfahrt"].day == powerDataEntry["Tag"] and departure_time >= current_time))
+                and (travelDataEntry["Ankunft"].day < powerDataEntry["Tag"]
+                     or (travelDataEntry["Ankunft"].day == powerDataEntry["Tag"] and arrival_time < current_time))):
+            indices.append(index)
+    return indices
+
+
 # Apply the function to each row
 car_travelData['Ankunft'] = car_travelData.apply(
     lambda row: combine_day_and_time(row['Ankunft_Tag'], row['Ankunft_Uhrzeit']), axis=1)
@@ -75,5 +93,9 @@ car_travelData['Dauer'] = car_travelData.apply(
     lambda row: getDuration(row['Notwendige_Ladung']), axis=1)
 car_travelData = car_travelData.drop(columns=['Ankunft_Tag', 'Ankunft_Uhrzeit', 'Abfahrt_Tag', 'Abfahrt_Uhrzeit'])
 car_travelData = adjust_duration(car_travelData)
+car_travelData.sort_values(by=["Ankunft"], inplace=True)
 
-print(car_travelData.to_string())
+for index, powerDataEntry in pv_powerData.iterrows():
+    active_travel_data_indices = get_active_travel_data_indices(powerDataEntry, car_travelData)
+    if (len(active_travel_data_indices) != 0):
+        print(active_travel_data_indices)
