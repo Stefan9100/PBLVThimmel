@@ -1,7 +1,11 @@
 import warnings
 from datetime import datetime, timedelta, time
+import matplotlib.pyplot as plt
+from math import isclose
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+from matplotlib.dates import HourLocator, DateFormatter
+
+warnings.filterwarnings("ignore")
 import pandas as pd
 
 # Define the Excel file path
@@ -21,6 +25,7 @@ car_masterData = {'Id': [1, 2],
 car_masterData = pd.DataFrame(car_masterData)
 car_travelData = pd.DataFrame(car_travelData)
 pv_powerData = pd.DataFrame(pv_powerData)
+doc_charge = []
 
 
 def decimal_to_time(decimal_hours):
@@ -84,6 +89,26 @@ def get_active_travel_data_indices(powerDataEntry, car_travelData):
     return indices
 
 
+def charge(car_travel_index, energy_loaded_in_5_min_kW):
+    current_duration = car_travelData.at[car_travel_index, 'Dauer']
+
+    if (current_duration > timedelta(0)):
+        car_travelData.at[car_travel_index, 'Dauer'] = current_duration - timedelta(minutes=5)
+        new_chargeNeeded = car_travelData.at[car_travel_index, 'Notwendige_Ladung'] - energy_loaded_in_5_min_kW
+        if (new_chargeNeeded < 0.5):
+            car_travelData.at[car_travel_index, 'Notwendige_Ladung'] = 0
+        else:
+            car_travelData.at[car_travel_index, 'Notwendige_Ladung'] = new_chargeNeeded
+    """else:
+        next_Index = getNextIndex(car_travel_index, car_travelData.at[car_travel_index, 'Fahrzeug'])
+        print(next_Index)
+        if (next_Index == -1):
+            print("Do nothing")
+        else:
+            charge(next_Index, energy_loaded_in_5_min_kW)"""
+
+
+# -------------------DATEN----------------------------------
 # Apply the function to each row
 car_travelData['Ankunft'] = car_travelData.apply(
     lambda row: combine_day_and_time(row['Ankunft_Tag'], row['Ankunft_Uhrzeit']), axis=1)
@@ -95,7 +120,155 @@ car_travelData = car_travelData.drop(columns=['Ankunft_Tag', 'Ankunft_Uhrzeit', 
 car_travelData = adjust_duration(car_travelData)
 car_travelData.sort_values(by=["Ankunft"], inplace=True)
 
+
+# -------------------LOGIK------------------------
+def calcPuffer(abfahrt, dauer, powerDataDate):
+    puffer = (abfahrt - dauer) - powerDataDate
+    return puffer
+
+
 for index, powerDataEntry in pv_powerData.iterrows():
     active_travel_data_indices = get_active_travel_data_indices(powerDataEntry, car_travelData)
-    if (len(active_travel_data_indices) != 0):
-        print(active_travel_data_indices)
+    powerDataDate = combine_day_and_time(powerDataEntry['Tag'], powerDataEntry['Uhrzeit'])
+    energy_pv_W = 1000 / 3
+    energy_pv_kW = energy_pv_W / 1000
+    # Nötig um den Puffer zu berechnen
+    active_travel_data = car_travelData.loc[active_travel_data_indices]
+    active_travel_data['Puffer'] = car_travelData.apply(
+        lambda row: calcPuffer(row['Abfahrt'], row['Dauer'], powerDataDate), axis=1)
+
+    # print("Tag " + str(powerDataDate))
+
+    # Prüfung, ob überhaupt ein Auto da ist
+    if len(active_travel_data_indices) == 0:
+        continue
+    # print(active_travel_data.to_string())
+
+    # Wenn die PV Erzeugung über 4kwh ist
+    if powerDataEntry["Erzeugung in Watt (W)"] > 1000 / 3:
+        # Wenn nur ein Auto zuhause ist wird dieses geladen
+        if len(active_travel_data_indices) == 1:
+            # => Load Car von Jasmin active_travel_data_indices[0], 4000/60 * 5, adjusted_car_travelData
+            # print(active_travel_data['Dauer'][4])
+            doc_charge.append(
+                [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW, "PV"])
+            charge(active_travel_data_indices[0], energy_pv_kW)
+            # print(active_travel_data.to_string())
+            # print("Load Car: " + str(active_travel_data_indices[0]) + "; Tag: " + str(powerDataEntry["Tag"])+ "; Uhrzeit: " + str(powerDataEntry["Uhrzeit"]))
+            continue
+        # Wenn mehere Autos zu hause sind
+        else:
+            to_much_power = powerDataEntry["Erzeugung in Watt (W)"] - energy_pv_W
+            # print("Prio-Check")
+            # Können beide Autos gleichzeitig mit PB strom geladen werden
+            if to_much_power > energy_pv_W:
+                # => Load beide Autos mit PV Strom
+                # print("Ohne Prio - Beide werden voll geladen")
+                for i in active_travel_data_indices:
+                    # PV
+                    doc_charge.append([powerDataDate, active_travel_data.at[i, 'Fahrzeug'], energy_pv_kW, "PV"])
+                    charge(i, energy_pv_kW)
+                # print(active_travel_data.to_string())
+                continue
+            # Es kann nur ein Auto mit 4kwh Strom geladen werden
+            else:
+                # print("Mit-Prio Entscheidung:")
+                # If puffer bei allen  von beiden 0
+                if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] < active_travel_data.at[
+                   active_travel_data_indices[1], 'Puffer']:
+                    # PV
+                    doc_charge.append(
+                        [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
+                         "PV"])
+                    charge(active_travel_data_indices[0], energy_pv_kW)
+                    if active_travel_data.at[active_travel_data_indices[1], 'Puffer'] <= timedelta(minutes=4,
+                                                                                                   seconds=59):
+                        # Netz
+                        doc_charge.append(
+                            [powerDataDate, active_travel_data.at[active_travel_data_indices[1], 'Fahrzeug'],
+                             energy_pv_kW, "Netz"])
+                        charge(active_travel_data_indices[1], energy_pv_kW)
+
+                else:
+                    # PV
+                    doc_charge.append(
+                        [powerDataDate, active_travel_data.at[active_travel_data_indices[1], 'Fahrzeug'], energy_pv_kW,
+                         "PV"])
+                    charge(active_travel_data_indices[1], energy_pv_kW)
+                    if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4,
+                                                                                                   seconds=59):
+                        # Netz
+                        doc_charge.append(
+                            [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'],
+                             energy_pv_kW, "Netz"])
+                        charge(active_travel_data_indices[0], energy_pv_kW)
+                # Lade das wo der Puffer weniger ist mit 4kwh
+                # Lade das andere mit to_much_power
+        # print(active_travel_data.to_string())
+    # PV-Strom ist in kleiner Menge verfügbar
+    else:
+        # if puffer bei beiden 0
+        # print("Keine PV")
+        if len(active_travel_data_indices) == 0:
+            continue
+        elif len(active_travel_data_indices) == 1:
+            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+                # Netz
+                doc_charge.append(
+                    [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
+                     "Netz"])
+                charge(active_travel_data_indices[0], energy_pv_kW)
+                continue
+        else:
+            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+                # Netz
+                doc_charge.append(
+                    [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
+                     "Netz"])
+                charge(active_travel_data_indices[0], energy_pv_kW)
+
+            if active_travel_data.at[active_travel_data_indices[1], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+                # Netz
+                doc_charge.append(
+                    [powerDataDate, active_travel_data.at[active_travel_data_indices[1], 'Fahrzeug'], energy_pv_kW,
+                     "Netz"])
+                charge(active_travel_data_indices[1], energy_pv_kW)
+
+    # Gibt es Autos wo puffer gleich 0
+    # elif ...
+    # elif any(active_travel_data_entry == timedelta(0) for active_travel_data_entry in active_travel_data['Puffer']):
+    #    print(4)
+    # Lade alle Autps wo Puffer gleich 0 mit 4kwh normalen Strom
+df = pd.DataFrame(doc_charge)
+sorted_df = df.sort_values(by=[1, 0])
+print(sorted_df.to_string())
+fahrzeug1_df = df[df[1] == 1]
+fahrzeug1_Netz_df = fahrzeug1_df[fahrzeug1_df[3] == "Netz"]
+fahrzeug1_PV_df = fahrzeug1_df[fahrzeug1_df[3] == "PV"]
+
+fahrzeug2_df = df[df[1] == 2]
+fahrzeug2_Netz_df = fahrzeug2_df[fahrzeug2_df[3] == "Netz"]
+fahrzeug2_PV_df = fahrzeug2_df[fahrzeug2_df[3] == "PV"]
+
+
+# Plotting the DataFrame
+plt.plot_date(fahrzeug1_PV_df[0], fahrzeug1_PV_df[2]*3, label='PV Strom Fahrzeug 1')
+plt.plot_date(fahrzeug1_Netz_df[0], fahrzeug1_Netz_df[2]*3, label='Netz Strom Fahrzeug 1')
+plt.plot_date(fahrzeug2_PV_df[0], fahrzeug2_PV_df[2]*6, label='PV Strom Fahrzeug 2')
+plt.plot_date(fahrzeug2_Netz_df[0], fahrzeug2_Netz_df[2]*6, label='Netz Strom Fahrzeug 2')
+
+plt.xlabel('Time')
+
+plt.gca().xaxis.set_major_locator(HourLocator(interval=2))  # Set interval of 2 hours
+plt.gca().xaxis.set_major_formatter(DateFormatter('%d %H:%M'))  # Format datetime as desired
+
+plt.ylabel('Größer 0 bedeutet Laden mit 4 kwH')
+plt.title('Ladesignale')
+plt.ylim(0, 4)
+plt.xticks(rotation=65, fontsize = 7)  # Rotate x-axis labels for better visibility
+plt.tight_layout()
+plt.legend()
+plt.grid(True)
+plt.show()
+
+#print(merge_df.to_string())
