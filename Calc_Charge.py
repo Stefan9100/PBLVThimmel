@@ -289,4 +289,28 @@ plt.savefig('plot.png', dpi=600)
 plt.grid(True)
 plt.show()
 
+# Plotting the DataFrame
+plt.figure(figsize=(80, 6))
+plt.plot_date(fahrzeug1_PV_df[0], fahrzeug1_PV_df[2] * 3, label='PV Strom Fahrzeug 1')
+plt.plot_date(fahrzeug1_Netz_df[0], fahrzeug1_Netz_df[2] * 3, label='Netz Strom Fahrzeug 1')
+plt.plot_date(fahrzeug2_PV_df[0], fahrzeug2_PV_df[2] * 6, label='PV Strom Fahrzeug 2')
+plt.plot_date(fahrzeug2_Netz_df[0], fahrzeug2_Netz_df[2] * 6, label='Netz Strom Fahrzeug 2')
+
+plt.xlabel('Time')
+
+plt.gca().xaxis.set_major_locator(HourLocator(interval=2)) # Set interval of 2 hours
+plt.gca().xaxis.set_major_formatter(DateFormatter('%d %H:%M'))  # Format datetime as desired
+
+plt.ylabel('Fahrzeug')
+plt.title('Ladesignale')
+plt.ylim(0, 4)
+plt.xticks(rotation=65, fontsize=6)  # Rotate x-axis labels for better visibility
+plt.tight_layout()
+plt.legend()
+# Save the plot as a PNG file with higher DPI
+
+plt.savefig('plot2.png', dpi=600)
+plt.grid(True)
+plt.show()
+
 # print(merge_df.to_string())
