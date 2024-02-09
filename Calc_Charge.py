@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, time
 import matplotlib.pyplot as plt
 from math import isclose
 
-from matplotlib.dates import HourLocator, DateFormatter
+from matplotlib.dates import HourLocator, DateFormatter, MinuteLocator
 
 warnings.filterwarnings("ignore")
 import pandas as pd
@@ -89,23 +89,33 @@ def get_active_travel_data_indices(powerDataEntry, car_travelData):
     return indices
 
 
+def getNextIndex(current_index, current_car):
+    current_car_df = car_travelData[car_travelData['Fahrzeug'] == current_car]
+    if current_index +1 > current_car_df.iloc[-1].name:
+        return -1
+    else:
+        next_car = current_car_df.at[current_index + 1, 'Fahrzeug']
+        if (current_car == next_car):
+            return current_index + 1
+        else:
+            getNextIndex(current_index + 1, current_car)
+
+
 def charge(car_travel_index, energy_loaded_in_5_min_kW):
     current_duration = car_travelData.at[car_travel_index, 'Dauer']
 
-    if (current_duration > timedelta(0)):
+    if current_duration > timedelta(0):
         car_travelData.at[car_travel_index, 'Dauer'] = current_duration - timedelta(minutes=5)
         new_chargeNeeded = car_travelData.at[car_travel_index, 'Notwendige_Ladung'] - energy_loaded_in_5_min_kW
-        if (new_chargeNeeded < 0.5):
+        if new_chargeNeeded < 0.5:
             car_travelData.at[car_travel_index, 'Notwendige_Ladung'] = 0
         else:
             car_travelData.at[car_travel_index, 'Notwendige_Ladung'] = new_chargeNeeded
-    """else:
+    else:
         next_Index = getNextIndex(car_travel_index, car_travelData.at[car_travel_index, 'Fahrzeug'])
-        print(next_Index)
-        if (next_Index == -1):
-            print("Do nothing")
-        else:
-            charge(next_Index, energy_loaded_in_5_min_kW)"""
+        if next_Index != -1:
+            charge(next_Index, energy_loaded_in_5_min_kW)
+
 
 
 # -------------------DATEN----------------------------------
@@ -175,14 +185,15 @@ for index, powerDataEntry in pv_powerData.iterrows():
                 # print("Mit-Prio Entscheidung:")
                 # If puffer bei allen  von beiden 0
                 if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] < active_travel_data.at[
-                   active_travel_data_indices[1], 'Puffer']:
+                    active_travel_data_indices[1], 'Puffer']:
                     # PV
                     doc_charge.append(
                         [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
                          "PV"])
                     charge(active_travel_data_indices[0], energy_pv_kW)
                     if active_travel_data.at[active_travel_data_indices[1], 'Puffer'] <= timedelta(minutes=4,
-                                                                                                   seconds=59):
+                                                                                                   seconds=59) and \
+                            active_travel_data.at[active_travel_data_indices[1], 'Dauer'] >= timedelta(0):
                         # Netz
                         doc_charge.append(
                             [powerDataDate, active_travel_data.at[active_travel_data_indices[1], 'Fahrzeug'],
@@ -196,7 +207,8 @@ for index, powerDataEntry in pv_powerData.iterrows():
                          "PV"])
                     charge(active_travel_data_indices[1], energy_pv_kW)
                     if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4,
-                                                                                                   seconds=59):
+                                                                                                   seconds=59) and \
+                            active_travel_data.at[active_travel_data_indices[0], 'Dauer'] >= timedelta(0):
                         # Netz
                         doc_charge.append(
                             [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'],
@@ -212,7 +224,8 @@ for index, powerDataEntry in pv_powerData.iterrows():
         if len(active_travel_data_indices) == 0:
             continue
         elif len(active_travel_data_indices) == 1:
-            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59) and \
+                    active_travel_data.at[active_travel_data_indices[0], 'Dauer'] >= timedelta(0):
                 # Netz
                 doc_charge.append(
                     [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
@@ -220,14 +233,16 @@ for index, powerDataEntry in pv_powerData.iterrows():
                 charge(active_travel_data_indices[0], energy_pv_kW)
                 continue
         else:
-            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+            if active_travel_data.at[active_travel_data_indices[0], 'Puffer'] <= timedelta(minutes=4, seconds=59) and \
+                    active_travel_data.at[active_travel_data_indices[0], 'Dauer'] >= timedelta(0):
                 # Netz
                 doc_charge.append(
                     [powerDataDate, active_travel_data.at[active_travel_data_indices[0], 'Fahrzeug'], energy_pv_kW,
                      "Netz"])
                 charge(active_travel_data_indices[0], energy_pv_kW)
 
-            if active_travel_data.at[active_travel_data_indices[1], 'Puffer'] <= timedelta(minutes=4, seconds=59):
+            if active_travel_data.at[active_travel_data_indices[1], 'Puffer'] <= timedelta(minutes=4, seconds=59) and \
+                    active_travel_data.at[active_travel_data_indices[1], 'Dauer'] >= timedelta(0):
                 # Netz
                 doc_charge.append(
                     [powerDataDate, active_travel_data.at[active_travel_data_indices[1], 'Fahrzeug'], energy_pv_kW,
@@ -250,25 +265,28 @@ fahrzeug2_df = df[df[1] == 2]
 fahrzeug2_Netz_df = fahrzeug2_df[fahrzeug2_df[3] == "Netz"]
 fahrzeug2_PV_df = fahrzeug2_df[fahrzeug2_df[3] == "PV"]
 
-
 # Plotting the DataFrame
-plt.plot_date(fahrzeug1_PV_df[0], fahrzeug1_PV_df[2]*3, label='PV Strom Fahrzeug 1')
-plt.plot_date(fahrzeug1_Netz_df[0], fahrzeug1_Netz_df[2]*3, label='Netz Strom Fahrzeug 1')
-plt.plot_date(fahrzeug2_PV_df[0], fahrzeug2_PV_df[2]*6, label='PV Strom Fahrzeug 2')
-plt.plot_date(fahrzeug2_Netz_df[0], fahrzeug2_Netz_df[2]*6, label='Netz Strom Fahrzeug 2')
+plt.figure(figsize=(80, 6))
+plt.plot_date(fahrzeug1_PV_df[0], fahrzeug1_PV_df[2] * 3, label='PV Strom Fahrzeug 1')
+plt.plot_date(fahrzeug1_Netz_df[0], fahrzeug1_Netz_df[2] * 3, label='Netz Strom Fahrzeug 1')
+plt.plot_date(fahrzeug2_PV_df[0], fahrzeug2_PV_df[2] * 6, label='PV Strom Fahrzeug 2')
+plt.plot_date(fahrzeug2_Netz_df[0], fahrzeug2_Netz_df[2] * 6, label='Netz Strom Fahrzeug 2')
 
 plt.xlabel('Time')
 
-plt.gca().xaxis.set_major_locator(HourLocator(interval=2))  # Set interval of 2 hours
+plt.gca().xaxis.set_major_locator(MinuteLocator(interval=30)) # Set interval of 2 hours
 plt.gca().xaxis.set_major_formatter(DateFormatter('%d %H:%M'))  # Format datetime as desired
 
-plt.ylabel('Größer 0 bedeutet Laden mit 4 kwH')
+plt.ylabel('Fahrzeug')
 plt.title('Ladesignale')
 plt.ylim(0, 4)
-plt.xticks(rotation=65, fontsize = 7)  # Rotate x-axis labels for better visibility
+plt.xticks(rotation=65, fontsize=6)  # Rotate x-axis labels for better visibility
 plt.tight_layout()
 plt.legend()
+# Save the plot as a PNG file with higher DPI
+
+plt.savefig('plot.png', dpi=600)
 plt.grid(True)
 plt.show()
 
-#print(merge_df.to_string())
+# print(merge_df.to_string())
